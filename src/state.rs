@@ -3,9 +3,9 @@ use std::sync::Arc;
 use winit::window::Window;
 
 pub struct State {
-    gpu: GpuContext,
     pub display: WindowSurface,
     render_pipeline: wgpu::RenderPipeline,
+    gpu: GpuContext,
 }
 
 impl State {

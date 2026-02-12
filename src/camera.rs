@@ -1,8 +1,4 @@
 use wgpu::util::DeviceExt;
-use winit::{
-    event::{ElementState, KeyEvent, WindowEvent},
-    keyboard::{KeyCode, PhysicalKey},
-};
 
 #[derive(Default)]
 pub struct CameraController {
@@ -15,10 +11,10 @@ pub struct Camera {
 
     pub fov: f32,
 
-    front: glam::Vec3,
-    right: glam::Vec3,
+    pub front: glam::Vec3,
+    pub right: glam::Vec3,
     up: glam::Vec3,
-    world_up: glam::Vec3,
+    pub world_up: glam::Vec3,
 
     yaw: f32,
     pitch: f32,
@@ -56,15 +52,7 @@ impl CameraController {
         }
     }
 
-    pub fn update_camera(
-        &mut self,
-        camera: &mut Camera,
-        width: usize,
-        height: usize,
-        dt: std::time::Duration,
-    ) {
-        let dt = dt.as_secs_f32();
-
+    pub fn update_camera(&mut self, camera: &mut Camera, width: usize, height: usize) {
         camera.yaw += self.mouse_delta.x as f32 * self.sensitivity;
         camera.pitch -= self.mouse_delta.y as f32 * self.sensitivity;
 

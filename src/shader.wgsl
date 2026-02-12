@@ -17,6 +17,11 @@ struct Ray {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
+fn get_env_color(ray: Ray) -> vec3<f32> {
+    let sky_gradient = ray.dir.y + 1;
+    return mix(vec3<f32>(1.0), vec3<f32>(0.5, 0.7, 1.0), sky_gradient);
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
@@ -69,5 +74,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    return vec4<f32>(get_env_color(ray), 1.0);
 }

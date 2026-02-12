@@ -3,6 +3,7 @@ use winit::{
     application::ApplicationHandler,
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
 
@@ -56,8 +57,12 @@ impl ApplicationHandler<State> for App {
             }
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                let dt = std::time::Instant::now().duration_since(self.last_frame);
+                let now = std::time::Instant::now();
+                let dt = now.duration_since(self.last_frame);
+                self.last_frame = std::time::Instant::now();
+
                 state.update(dt);
+
                 match state.render() {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost) => {
@@ -66,8 +71,19 @@ impl ApplicationHandler<State> for App {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                     Err(e) => eprintln!("{:?}", e),
                 }
-
-                self.last_frame = std::time::Instant::now();
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state,
+                        physical_key: PhysicalKey::Code(code),
+                        ..
+                    },
+                ..
+            } => {
+                if let Some(game_state) = &mut self.state {
+                    game_state.player_controller.process_keyboard(code, state);
+                }
             }
             _ => (),
         }

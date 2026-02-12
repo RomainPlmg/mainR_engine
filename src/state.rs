@@ -1,7 +1,7 @@
 use crate::{
     camera::{CameraController, CameraResource},
     gpu_context::{GpuContext, WindowSurface},
-    player::Player,
+    player::{Player, PlayerController},
 };
 use std::sync::Arc;
 use winit::window::Window;
@@ -10,6 +10,9 @@ pub struct State {
     pub display: WindowSurface,
     render_pipeline: wgpu::RenderPipeline,
     gpu: GpuContext,
+
+    // Player
+    pub player_controller: PlayerController,
     player: Player,
 
     // Camera
@@ -22,6 +25,7 @@ impl State {
         let (gpu, display) = GpuContext::new(window).await?;
 
         let player = Player::new(glam::Vec3::ZERO);
+        let player_controller = PlayerController::default();
         let camera_resource = CameraResource::new(&gpu.device, &player.camera);
         let camera_controller = CameraController::new(0.1);
 
@@ -82,6 +86,7 @@ impl State {
             gpu,
             display,
             render_pipeline,
+            player_controller,
             player,
             camera_resource,
             camera_controller,
@@ -93,8 +98,10 @@ impl State {
             self.display.config.width as usize,
             self.display.config.height as usize,
         );
+
         self.camera_controller
-            .update_camera(&mut self.player.camera, size.x, size.y, dt);
+            .update_camera(&mut self.player.camera, size.x, size.y);
+        self.player.move_player(&self.player_controller, dt, 3.0);
         self.camera_resource
             .update(&self.gpu.queue, &self.player.camera);
     }

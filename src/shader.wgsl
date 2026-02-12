@@ -42,5 +42,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     ray.origin = camera.origin;
     ray.dir = normalize(target_pos - ray.origin);
 
-    return vec4<f32>(ray.dir * 0.5 + 0.5, 1.0);
+    // DDA algorithm
+    var grid_pos = floor(ray.origin); // Ex: pos = 2.6 -> We are in box 2
+    var t_dist = abs(1.0/(ray.dir + 0.00001 )); /* If t_dist.x = 0.1, we travel 10cm on x component for each block,
+                                                                * so need 10 blocks to intersect the X axis (1/0.1 = 10) 
+                                                                * 0.00001 -> Avoid division by 0
+                                                                */
+    var step = sign(ray.dir); // Step is -1 (dir < 0) or 1 (dir > 0)
+    var next_boundary = grid_pos + step * 0.5 + 0.5;
+    var t_max = abs((next_boundary - ray.origin) / ray.dir);
+
+    let cube = vec3<f32>(0.0, 0.0, 2.0);
+
+    for (var i = 0; i < 128; i++) {
+        let step_mask = vec3<f32>(
+            f32(t_max.x <= min(t_max.y, t_max.z)),
+            f32(t_max.y < min(t_max.x, t_max.z)),
+            f32(t_max.z < min(t_max.x, t_max.y))
+        );
+
+        t_max += step_mask * t_dist;
+        grid_pos += vec3<f32>(step_mask) * step;
+
+        if (all(grid_pos == cube)) {
+            return vec4<f32>(ray.dir * 0.5 + 0.5, 1.0);
+        }
+    }
+
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 }

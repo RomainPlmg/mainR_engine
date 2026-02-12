@@ -1,4 +1,8 @@
-use crate::gpu_context::{GpuContext, WindowSurface};
+use crate::{
+    camera::{CameraController, CameraResource},
+    gpu_context::{GpuContext, WindowSurface},
+    player::Player,
+};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -6,11 +10,20 @@ pub struct State {
     pub display: WindowSurface,
     render_pipeline: wgpu::RenderPipeline,
     gpu: GpuContext,
+    player: Player,
+
+    // Camera
+    camera_resource: CameraResource,
+    pub camera_controller: CameraController,
 }
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let (gpu, display) = GpuContext::new(window).await?;
+
+        let player = Player::default();
+        let camera_resource = CameraResource::new(&gpu.device, &player.camera);
+        let camera_controller = CameraController::new(10.0);
 
         // Confiure the render pipeline
         let shader = gpu
@@ -20,7 +33,9 @@ impl State {
             gpu.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[],
+                    bind_group_layouts: &[
+                        &camera_resource.layout,
+                    ],
                     immediate_size: 0,
                 });
         let render_pipeline = gpu
@@ -30,8 +45,8 @@ impl State {
                 layout: Some(&render_pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("vs_main"), // 1.
-                    buffers: &[],                 // 2.
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -69,7 +84,16 @@ impl State {
             gpu,
             display,
             render_pipeline,
+            player,
+            camera_resource,
+            camera_controller,
         })
+    }
+
+    pub fn update(&mut self, dt: std::time::Duration) {
+        let size = glam::USizeVec2::new(self.display.config.width as usize, self.display.config.height as usize);
+        self.camera_resource.update(&self.gpu.queue, &self.player.camera);
+        self.camera_controller.update_camera(&mut self.player.camera, size.x, size.y, dt);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -113,6 +137,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.camera_resource.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
 

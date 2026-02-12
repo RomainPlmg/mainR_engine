@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use winit::window::Window;
+use winit::window::{CursorGrabMode, Window};
 
 pub struct GpuContext {
     pub instance: wgpu::Instance,
@@ -80,6 +80,19 @@ impl WindowSurface {
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(device, &self.config);
+        }
+    }
+
+    pub fn set_cursor_locked(&mut self, locked: bool) {
+        if locked {
+            self.window.set_cursor_visible(false);
+            let _ = self
+                .window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
+        } else {
+            self.window.set_cursor_visible(true);
+            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
         }
     }
 }

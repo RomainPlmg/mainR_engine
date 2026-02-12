@@ -42,5 +42,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     ray.origin = camera.origin;
     ray.dir = normalize(target_pos - ray.origin);
 
-    return vec4<f32>(ray.dir, 1.0);
+    return vec4<f32>(ray.dir * 0.5 + 0.5, 1.0);
 }

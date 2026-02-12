@@ -21,9 +21,9 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let (gpu, display) = GpuContext::new(window).await?;
 
-        let player = Player::default();
+        let player = Player::new(glam::Vec3::ZERO);
         let camera_resource = CameraResource::new(&gpu.device, &player.camera);
-        let camera_controller = CameraController::new(10.0);
+        let camera_controller = CameraController::new(0.1);
 
         // Confiure the render pipeline
         let shader = gpu
@@ -33,9 +33,7 @@ impl State {
             gpu.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[
-                        &camera_resource.layout,
-                    ],
+                    bind_group_layouts: &[&camera_resource.layout],
                     immediate_size: 0,
                 });
         let render_pipeline = gpu
@@ -91,9 +89,14 @@ impl State {
     }
 
     pub fn update(&mut self, dt: std::time::Duration) {
-        let size = glam::USizeVec2::new(self.display.config.width as usize, self.display.config.height as usize);
-        self.camera_resource.update(&self.gpu.queue, &self.player.camera);
-        self.camera_controller.update_camera(&mut self.player.camera, size.x, size.y, dt);
+        let size = glam::USizeVec2::new(
+            self.display.config.width as usize,
+            self.display.config.height as usize,
+        );
+        self.camera_controller
+            .update_camera(&mut self.player.camera, size.x, size.y, dt);
+        self.camera_resource
+            .update(&self.gpu.queue, &self.player.camera);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

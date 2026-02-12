@@ -1,6 +1,5 @@
-use crate::camera::{Camera};
+use crate::camera::Camera;
 
-#[derive(Default)]
 pub struct Player {
     pub position: glam::Vec3,
     pub camera: Camera,

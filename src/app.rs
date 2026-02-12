@@ -33,7 +33,8 @@ impl ApplicationHandler<State> for App {
                 .unwrap(),
         );
 
-        let state = pollster::block_on(State::new(window)).unwrap();
+        let mut state = pollster::block_on(State::new(window)).unwrap();
+        state.display.set_cursor_locked(true);
         self.state = Some(state);
     }
 
@@ -55,7 +56,7 @@ impl ApplicationHandler<State> for App {
             }
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                let dt = std::time::Instant::now().elapsed();
+                let dt = std::time::Instant::now().duration_since(self.last_frame);
                 state.update(dt);
                 match state.render() {
                     Ok(_) => {}
@@ -65,6 +66,8 @@ impl ApplicationHandler<State> for App {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                     Err(e) => eprintln!("{:?}", e),
                 }
+
+                self.last_frame = std::time::Instant::now();
             }
             _ => (),
         }

@@ -8,14 +8,8 @@ use winit::{
 pub struct CameraController {
     sensitivity: f32,
     mouse_delta: glam::DVec2,
-
-    forward_pressed: bool,
-    backward_pressed: bool,
-    right_pressed: bool,
-    left_pressed: bool,
 }
 
-#[derive(Default)]
 pub struct Camera {
     pub position: glam::Vec3,
 
@@ -62,11 +56,17 @@ impl CameraController {
         }
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera, width: usize, height: usize, dt: std::time::Duration) {
+    pub fn update_camera(
+        &mut self,
+        camera: &mut Camera,
+        width: usize,
+        height: usize,
+        dt: std::time::Duration,
+    ) {
         let dt = dt.as_secs_f32();
 
         camera.yaw += self.mouse_delta.x as f32 * self.sensitivity;
-        camera.pitch += self.mouse_delta.y as f32 * self.sensitivity;
+        camera.pitch -= self.mouse_delta.y as f32 * self.sensitivity;
 
         // Lock pitch to avoid backflip
         camera.pitch = camera.pitch.clamp(-89.0, 89.0);
@@ -83,12 +83,18 @@ impl Camera {
     pub fn new(position: glam::Vec3) -> Self {
         Self {
             position,
+            yaw: -90.0,
+            fov: 60.0,
             world_up: glam::Vec3 {
                 x: 0.0,
                 y: 1.0,
                 z: 0.0,
             },
-            ..Default::default()
+            front: glam::Vec3::ZERO,
+            up: glam::Vec3::ZERO,
+            right: glam::Vec3::ZERO,
+            pitch: 0.0,
+            inv_view_proj: glam::Mat4::ZERO,
         }
     }
 
@@ -104,6 +110,10 @@ impl Camera {
     }
 
     fn update_matrices(&mut self, width: usize, height: usize) {
+        if self.fov <= 0.0 {
+            return;
+        }
+
         let aspect = width as f32 / height as f32;
 
         let view = glam::Mat4::look_at_rh(self.position, self.position + self.front, self.up);

@@ -19,7 +19,6 @@ impl World {
         for x in 0..GRID_SIZE {
             for z in 0..GRID_SIZE {
                 for y in 0..GRID_SIZE {
-                    let index = 
                     voxels[x + (y * GRID_SIZE) + (z * GRID_SIZE * GRID_SIZE)] = 1;
                 }
             }

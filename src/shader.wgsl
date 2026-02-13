@@ -17,9 +17,26 @@ struct Ray {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
+@group(1) @binding(0)
+var<storage, read> voxels: array<u32>;
+
 fn get_env_color(ray: Ray) -> vec3<f32> {
     let sky_gradient = ray.dir.y + 1;
     return mix(vec3<f32>(1.0), vec3<f32>(0.5, 0.7, 1.0), sky_gradient);
+}
+
+const GRID_SIZE: u32 = 32u;
+
+fn get_voxel(p: vec3<i32>) -> u32 {
+    if (p.x < 0 || p.x >= i32(GRID_SIZE) || 
+        p.y < 0 || p.y >= i32(GRID_SIZE) || 
+        p.z < 0 || p.z >= i32(GRID_SIZE)) {
+        return 0u;
+    }
+    
+    // Index 1D : x + y*L + z*L*L
+    let index = u32(p.x) + u32(p.y) * GRID_SIZE + u32(p.z) * GRID_SIZE * GRID_SIZE;
+    return voxels[index];
 }
 
 @vertex
@@ -69,7 +86,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         t_max += step_mask * t_dist;
         grid_pos += vec3<f32>(step_mask) * step;
 
-        if (all(grid_pos == cube)) {
+        let voxel = get_voxel(vec3<i32>(grid_pos));
+
+        if (voxel != 0u) {
             return vec4<f32>(ray.dir * 0.5 + 0.5, 1.0);
         }
     }

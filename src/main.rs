@@ -6,6 +6,7 @@ mod camera;
 mod gpu_context;
 mod state;
 mod player;
+mod world;
 
 fn main() {
     env_logger::init();

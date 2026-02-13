@@ -2,6 +2,7 @@ use crate::{
     camera::{CameraController, CameraResource},
     gpu_context::{GpuContext, WindowSurface},
     player::{Player, PlayerController},
+    world::{self, World, WorldResource},
 };
 use std::sync::Arc;
 use winit::window::Window;
@@ -18,16 +19,23 @@ pub struct State {
     // Camera
     camera_resource: CameraResource,
     pub camera_controller: CameraController,
+
+    // World
+    world: World,
+    world_resource: WorldResource,
 }
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let (gpu, display) = GpuContext::new(window).await?;
 
-        let player = Player::new(glam::Vec3::ZERO);
+        let player = Player::new(glam::Vec3::new(0.0, world::GRID_SIZE as f32, 0.0));
         let player_controller = PlayerController::default();
         let camera_resource = CameraResource::new(&gpu.device, &player.camera);
         let camera_controller = CameraController::new(0.1);
+
+        let world = World::new();
+        let world_resource = WorldResource::new(&gpu.device, &world);
 
         // Confiure the render pipeline
         let shader = gpu
@@ -37,7 +45,10 @@ impl State {
             gpu.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&camera_resource.layout],
+                    bind_group_layouts: &[
+                        &camera_resource.layout, // @group(0)
+                        &world_resource.layout,  // @group(1)
+                    ],
                     immediate_size: 0,
                 });
         let render_pipeline = gpu
@@ -90,6 +101,8 @@ impl State {
             player,
             camera_resource,
             camera_controller,
+            world,
+            world_resource,
         })
     }
 
@@ -148,6 +161,7 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_resource.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.world_resource.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
 

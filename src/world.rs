@@ -1,70 +1,193 @@
-use std::sync::Arc;
-
-pub const GRID_SIZE: usize = 32;
+use crate::{
+    chunk::{Chunk, VOXELS_PER_CHUNK},
+    voxel::Voxel,
+};
+use dashmap::DashMap;
+use glam::UVec3;
+use noise::{NoiseFn, Perlin};
+use wgpu::util::DeviceExt;
 
 pub struct World {
-    voxels: Vec<u32>,
+    chunks: DashMap<glam::IVec3, Chunk>,
+    pub params: WorldParams,
 }
 
 pub struct WorldResource {
-    pub buffer: wgpu::Buffer,
     pub layout: wgpu::BindGroupLayout,
     pub bind_group: wgpu::BindGroup,
+    pub pool_capacity: u32,
+    chunk_pool_buffer: wgpu::Buffer,
+    indirection_buffer: wgpu::Buffer,
+    uniform_buffer: wgpu::Buffer,
+}
+
+pub struct WorldParams {
+    pub view_distance: u32,
+}
+
+#[repr(C, align(16))]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct WorldUniform {
+    pub view_distance: u32,
+    _padding0: [u32; 3],
 }
 
 impl World {
     pub fn new() -> Self {
-        let mut voxels = vec![0u32; GRID_SIZE * GRID_SIZE * GRID_SIZE];
+        let params = WorldParams::default();
+        let chunks = DashMap::new();
+        let perlin = Perlin::new(1);
 
-        for x in 0..GRID_SIZE {
-            for z in 0..GRID_SIZE {
-                for y in 0..GRID_SIZE {
-                    voxels[x + (y * GRID_SIZE) + (z * GRID_SIZE * GRID_SIZE)] = 1;
+        for x in 0..params.view_distance {
+            for z in 0..params.view_distance {
+                for y in 0..1 {
+                    let chunk_pos = glam::IVec3::new(x as i32, y as i32, z as i32);
+                    let mut chunk = Chunk::new();
+                    chunk.generate(&perlin, chunk_pos);
+                    chunks.insert(chunk_pos, chunk);
                 }
             }
         }
 
-        Self { voxels }
+        Self { chunks, params }
     }
 }
 
 impl WorldResource {
-    pub fn new(device: &wgpu::Device, world: &World) -> Self {
-        use wgpu::util::DeviceExt;
+    pub fn new(device: &wgpu::Device, view_distance: u32) -> Self {
+        let indirection_count = view_distance * view_distance * view_distance;
+        let pool_capacity = view_distance * view_distance * view_distance;
 
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("World Storage Buffer"),
-            contents: bytemuck::cast_slice(&world.voxels),
+        let uniform = WorldUniform {
+            view_distance: view_distance,
+            ..Default::default()
+        };
+
+        // Chunk pool buffer store all visible chunks
+        let chunk_pool_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Chunk Pool Storage Buffer"),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            size: ((pool_capacity + 1) * VOXELS_PER_CHUNK * 4) as u64, // +1 because slot 0 reserved for empty chunk
+            mapped_at_creation: false,
+        });
+
+        // Indirection buffer indicates for a given index if there is a chunk
+        // (eg: index 786 <=> chunk(x: 2, y: 1, z: 16) -> contains the index in the chunk pool buffer or 0 if empty)
+        let indirection_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Indirection Storage Buffer"),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            size: (indirection_count * 4) as u64,
+            mapped_at_creation: false,
+        });
+
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("World Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0, // On le mettra au binding 0 de son propre groupe
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                // Binding 0 -> Indirection
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // Binding 1 -> Chunk Pool
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Binding 2 -> World Uniform
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("World Bind Group"),
             layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: indirection_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: chunk_pool_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         Self {
-            buffer,
             layout,
             bind_group,
+            pool_capacity,
+            chunk_pool_buffer,
+            indirection_buffer,
+            uniform_buffer,
         }
+    }
+
+    pub fn upload(&mut self, queue: &wgpu::Queue, world: &World) {
+        let mut gpu_pool_index: u32 = 1; // Begin at 1 because 0 is for empty chunk
+        let view_distance = world.params.view_distance;
+        let mut indirection_data =
+            vec![0u32; (view_distance * view_distance * view_distance) as usize];
+
+        for entry in world.chunks.iter() {
+            let pos = entry.key();
+            let chunk = entry.value();
+            queue.write_buffer(
+                &self.chunk_pool_buffer,
+                (gpu_pool_index * VOXELS_PER_CHUNK * size_of::<Voxel>() as u32) as u64,
+                chunk.as_bytes(),
+            );
+
+            let indirection_idx: u32 = pos.x as u32
+                + pos.y as u32 * view_distance
+                + pos.z as u32 * view_distance * view_distance;
+
+            indirection_data[indirection_idx as usize] = gpu_pool_index;
+
+            gpu_pool_index += 1;
+        }
+
+        queue.write_buffer(
+            &self.indirection_buffer,
+            0,
+            bytemuck::cast_slice(&indirection_data),
+        );
+    }
+}
+
+impl Default for WorldParams {
+    fn default() -> WorldParams {
+        WorldParams { view_distance: 16 }
     }
 }

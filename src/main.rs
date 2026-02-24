@@ -3,9 +3,11 @@ use winit::event_loop::EventLoop;
 
 mod app;
 mod camera;
+mod chunk;
 mod gpu_context;
-mod state;
 mod player;
+mod state;
+mod voxel;
 mod world;
 
 fn main() {

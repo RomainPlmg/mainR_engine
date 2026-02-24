@@ -1,6 +1,10 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use winit::{
     application::ApplicationHandler,
+    dpi::LogicalSize,
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::PhysicalKey,
@@ -12,7 +16,9 @@ use crate::state::State;
 pub struct App {
     proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>, // State as option 'cause window can't be created before the Resumed state
-    last_frame: std::time::Instant,
+    last_render_time: Instant,
+    frame_count: u32,
+    accum_time: Duration,
 }
 
 impl App {
@@ -21,8 +27,35 @@ impl App {
         Self {
             proxy,
             state: None,
-            last_frame: std::time::Instant::now(),
+            last_render_time: Instant::now(),
+            frame_count: 0,
+            accum_time: Duration::ZERO,
         }
+    }
+
+    fn update_fps(&mut self) -> (Duration, Option<String>) {
+        let now = Instant::now();
+        let delta_time = now - self.last_render_time;
+        self.last_render_time = now;
+
+        self.accum_time += delta_time;
+        self.frame_count += 1;
+
+        let mut new_title = None;
+        if self.accum_time >= Duration::from_millis(200) {
+            // fps = frame_count / 0.2s (donc count * 5)
+            let fps = self.frame_count * 5;
+            new_title = Some(format!(
+                "MainR Engine - FPS: {} | {:.2}ms",
+                fps,
+                delta_time.as_secs_f32() * 1000.0
+            ));
+
+            self.accum_time = Duration::ZERO;
+            self.frame_count = 0;
+        }
+
+        (delta_time, new_title)
     }
 }
 
@@ -30,7 +63,9 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(
             event_loop
-                .create_window(Window::default_attributes())
+                .create_window(
+                    Window::default_attributes().with_inner_size(LogicalSize::new(1280.0, 720.0)),
+                )
                 .unwrap(),
         );
 
@@ -45,31 +80,33 @@ impl ApplicationHandler<State> for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        let state = match &mut self.state {
-            Some(canvas) => canvas,
-            None => return,
-        };
-
         match event {
             WindowEvent::CloseRequested => {
                 self.state.take(); // Destroy the state
-                event_loop.exit()
+                event_loop.exit();
+                return;
             }
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::Resized(size) => {
+                if let Some(state) = &mut self.state {
+                    state.resize(size.width, size.height);
+                }
+            }
             WindowEvent::RedrawRequested => {
-                let now = std::time::Instant::now();
-                let dt = now.duration_since(self.last_frame);
-                self.last_frame = std::time::Instant::now();
-
-                state.update(dt);
-
-                match state.render() {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost) => {
-                        state.resize(state.display.config.width, state.display.config.height)
+                let (dt, title) = self.update_fps();
+                if let Some(state) = &mut self.state {
+                    if let Some(t) = title {
+                        state.display.window.set_title(&t);
                     }
-                    Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                    Err(e) => eprintln!("{:?}", e),
+                    state.update(dt);
+
+                    match state.render() {
+                        Ok(_) => {}
+                        Err(wgpu::SurfaceError::Lost) => {
+                            state.resize(state.display.config.width, state.display.config.height)
+                        }
+                        Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
+                        Err(e) => eprintln!("{:?}", e),
+                    }
                 }
             }
             WindowEvent::KeyboardInput {

@@ -22,7 +22,7 @@ pub struct Camera {
     inv_view_proj: glam::Mat4,
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     pub inv_view_proj: [[f32; 4]; 4],

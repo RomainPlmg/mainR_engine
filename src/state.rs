@@ -2,7 +2,7 @@ use crate::{
     camera::{CameraController, CameraResource},
     gpu_context::{GpuContext, WindowSurface},
     player::{Player, PlayerController},
-    world::{self, World, WorldResource},
+    world::{World, WorldResource},
 };
 use std::sync::Arc;
 use winit::window::Window;
@@ -29,13 +29,13 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let (gpu, display) = GpuContext::new(window).await?;
 
-        let player = Player::new(glam::Vec3::new(0.0, world::GRID_SIZE as f32, 0.0));
+        let player = Player::new(glam::Vec3::ZERO);
         let player_controller = PlayerController::default();
         let camera_resource = CameraResource::new(&gpu.device, &player.camera);
         let camera_controller = CameraController::new(0.1);
 
         let world = World::new();
-        let world_resource = WorldResource::new(&gpu.device, &world);
+        let mut world_resource = WorldResource::new(&gpu.device, world.params.view_distance);
 
         // Confiure the render pipeline
         let shader = gpu
@@ -93,6 +93,8 @@ impl State {
                 cache: None,
             });
 
+        world_resource.upload(&gpu.queue, &world);
+
         Ok(Self {
             gpu,
             display,
@@ -114,7 +116,7 @@ impl State {
 
         self.camera_controller
             .update_camera(&mut self.player.camera, size.x, size.y);
-        self.player.move_player(&self.player_controller, dt, 3.0);
+        self.player.move_player(&self.player_controller, dt, 10.0);
         self.camera_resource
             .update(&self.gpu.queue, &self.player.camera);
     }

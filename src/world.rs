@@ -1,14 +1,15 @@
 use crate::{
-    chunk::{Chunk, VOXELS_PER_CHUNK},
+    chunk::*,
+    svo::{SVO, SVONode},
     voxel::Voxel,
 };
 use dashmap::DashMap;
-use glam::UVec3;
-use noise::{NoiseFn, Perlin};
+use noise::Perlin;
 use wgpu::util::DeviceExt;
 
 pub struct World {
     chunks: DashMap<glam::IVec3, Chunk>,
+    octree: SVO,
     pub params: WorldParams,
 }
 
@@ -49,7 +50,9 @@ impl World {
             }
         }
 
-        Self { chunks, params }
+        let octree = SVO::new();
+
+        Self { chunks, octree, params }
     }
 }
 

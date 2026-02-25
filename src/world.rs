@@ -1,5 +1,5 @@
 use crate::{
-    chunk::*,
+    chunk::{self, *},
     svo::{SVO, SVONode},
     voxel::Voxel,
 };
@@ -42,17 +42,37 @@ impl World {
         for x in 0..params.view_distance {
             for z in 0..params.view_distance {
                 for y in 0..1 {
-                    let chunk_pos = glam::IVec3::new(x as i32, y as i32, z as i32);
+                    let chunk_coord = glam::IVec3::new(x as i32, y as i32, z as i32);
                     let mut chunk = Chunk::new();
-                    chunk.generate(&perlin, chunk_pos);
-                    chunks.insert(chunk_pos, chunk);
+                    chunk.generate(&perlin, chunk_coord);
+                    chunks.insert(chunk_coord, chunk);
                 }
             }
         }
 
-        let octree = SVO::new();
+        // Fill the octree
+        let mut octree = SVO::new();
+        let max_depth = (params.view_distance * CHUNK_SIZE).ilog2();
 
-        Self { chunks, octree, params }
+        for entry in chunks.iter() {
+            let chunk_coord = entry.key();
+            let chunk = entry.value();
+
+            for (index, voxel) in chunk.iter_voxels() {
+                let local_voxel_coord = Chunk::index_to_local_pos(index);
+                let global_voxel_coord = Chunk::local_to_world_pos(&local_voxel_coord, chunk_coord);
+
+                octree.insert(global_voxel_coord.as_uvec3(), voxel.color, max_depth);
+            }
+        }
+
+        println!("{} kB", octree.nodes.len() * size_of::<SVONode>() / 1000);
+
+        Self {
+            chunks,
+            octree,
+            params,
+        }
     }
 }
 

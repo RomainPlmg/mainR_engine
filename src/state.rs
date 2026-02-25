@@ -1,7 +1,8 @@
 use crate::{
     camera::{CameraController, CameraResource},
     gpu_context::{GpuContext, WindowSurface},
-    player::{Player, PlayerController},
+    player::Player,
+    player_controller::PlayerController,
     world::{World, WorldResource},
 };
 use std::sync::Arc;

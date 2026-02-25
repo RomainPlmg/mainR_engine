@@ -6,7 +6,9 @@ mod camera;
 mod chunk;
 mod gpu_context;
 mod player;
+mod player_controller;
 mod state;
+mod svo;
 mod voxel;
 mod world;
 

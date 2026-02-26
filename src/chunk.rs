@@ -3,7 +3,6 @@ use noise::{NoiseFn, Perlin};
 use crate::voxel::Voxel;
 
 pub const CHUNK_SIZE: u32 = 16;
-pub const VOXELS_PER_CHUNK: u32 = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
 pub struct Chunk {
     voxels: Vec<Voxel>,

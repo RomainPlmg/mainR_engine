@@ -1,4 +1,7 @@
-#[derive(Default, Debug, Clone, Copy)]
+use std::u32;
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SVONode {
     children_idx: u32, // 0 if empty
     color: u32,        // Packed color, for LOD
@@ -34,7 +37,7 @@ impl SVO {
         // Work coordinates (begin to world coordinates)
         let mut cur_coord = coord;
 
-        for depth in 0..max_depth {
+        for _ in 0..max_depth {
             size /= 2; // Subdivide world
 
             // Determine the child from the cube position (0-7)
@@ -45,7 +48,7 @@ impl SVO {
             let child_offset = (child_x << 2) | (child_y << 1) | child_z;
 
             // Allocate childs in the actual node if required
-            if (self.nodes[current_node_idx].children_idx == 0) {
+            if self.nodes[current_node_idx].children_idx == 0 {
                 let new_node_idx = self.allocate_children();
                 self.nodes[current_node_idx].children_idx = new_node_idx;
             }
@@ -54,10 +57,27 @@ impl SVO {
             current_node_idx = (self.nodes[current_node_idx].children_idx + child_offset) as usize;
 
             // Convert coordinates to local coord for the next level
-            cur_coord %= size;
+            if child_x == 1 {
+                cur_coord.x -= size;
+            }
+            if child_y == 1 {
+                cur_coord.y -= size;
+            }
+            if child_z == 1 {
+                cur_coord.z -= size;
+            }
         }
 
         // In the leaf, set the color
+        self.nodes[current_node_idx].children_idx = u32::MAX;
         self.nodes[current_node_idx].color = color;
+    }
+
+    pub fn size(&self) -> usize {
+        self.nodes.len() * size_of::<SVONode>()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        return bytemuck::cast_slice(&self.nodes);
     }
 }

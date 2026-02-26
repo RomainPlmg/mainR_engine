@@ -16,9 +16,7 @@ pub struct World {
 pub struct WorldResource {
     pub layout: wgpu::BindGroupLayout,
     pub bind_group: wgpu::BindGroup,
-    pub pool_capacity: u32,
-    chunk_pool_buffer: wgpu::Buffer,
-    indirection_buffer: wgpu::Buffer,
+    svo_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
 }
 
@@ -66,7 +64,7 @@ impl World {
             }
         }
 
-        println!("{} kB", octree.nodes.len() * size_of::<SVONode>() / 1000);
+        println!("{} kB", octree.size() / 1000);
 
         Self {
             chunks,
@@ -78,28 +76,16 @@ impl World {
 
 impl WorldResource {
     pub fn new(device: &wgpu::Device, view_distance: u32) -> Self {
-        let indirection_count = view_distance * view_distance * view_distance;
-        let pool_capacity = view_distance * view_distance * view_distance;
-
         let uniform = WorldUniform {
             view_distance: view_distance,
             ..Default::default()
         };
 
-        // Chunk pool buffer store all visible chunks
-        let chunk_pool_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        // Sparse Voxel Octree buffer
+        let svo_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Chunk Pool Storage Buffer"),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            size: ((pool_capacity + 1) * VOXELS_PER_CHUNK * 4) as u64, // +1 because slot 0 reserved for empty chunk
-            mapped_at_creation: false,
-        });
-
-        // Indirection buffer indicates for a given index if there is a chunk
-        // (eg: index 786 <=> chunk(x: 2, y: 1, z: 16) -> contains the index in the chunk pool buffer or 0 if empty)
-        let indirection_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Indirection Storage Buffer"),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            size: (indirection_count * 4) as u64,
+            size: 32000000 as u64, // TODO: Dynamic allocation
             mapped_at_creation: false,
         });
 
@@ -112,7 +98,7 @@ impl WorldResource {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("World Bind Group Layout"),
             entries: &[
-                // Binding 0 -> Indirection
+                // Binding 0 -> SVO
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -123,20 +109,9 @@ impl WorldResource {
                     },
                     count: None,
                 },
-                // Binding 1 -> Chunk Pool
+                // Binding 1 -> World Uniform
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // Binding 2 -> World Uniform
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -154,14 +129,10 @@ impl WorldResource {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: indirection_buffer.as_entire_binding(),
+                    resource: svo_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: chunk_pool_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: uniform_buffer.as_entire_binding(),
                 },
             ],
@@ -170,41 +141,16 @@ impl WorldResource {
         Self {
             layout,
             bind_group,
-            pool_capacity,
-            chunk_pool_buffer,
-            indirection_buffer,
+            svo_buffer,
             uniform_buffer,
         }
     }
 
     pub fn upload(&mut self, queue: &wgpu::Queue, world: &World) {
-        let mut gpu_pool_index: u32 = 1; // Begin at 1 because 0 is for empty chunk
-        let view_distance = world.params.view_distance;
-        let mut indirection_data =
-            vec![0u32; (view_distance * view_distance * view_distance) as usize];
-
-        for entry in world.chunks.iter() {
-            let pos = entry.key();
-            let chunk = entry.value();
-            queue.write_buffer(
-                &self.chunk_pool_buffer,
-                (gpu_pool_index * VOXELS_PER_CHUNK * size_of::<Voxel>() as u32) as u64,
-                chunk.as_bytes(),
-            );
-
-            let indirection_idx: u32 = pos.x as u32
-                + pos.y as u32 * view_distance
-                + pos.z as u32 * view_distance * view_distance;
-
-            indirection_data[indirection_idx as usize] = gpu_pool_index;
-
-            gpu_pool_index += 1;
-        }
-
         queue.write_buffer(
-            &self.indirection_buffer,
+            &self.svo_buffer,
             0,
-            bytemuck::cast_slice(&indirection_data),
+            world.octree.as_bytes(),
         );
     }
 }

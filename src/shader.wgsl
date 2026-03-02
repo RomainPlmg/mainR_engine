@@ -31,11 +31,9 @@ struct SVONode {
     color: u32,
 }
 
-struct HitState {
-    node_idx: u32,       // Node index in the SVO
-    parent_idx: u32,     // Parent index in the SVO
-    box: BoundingBox,    // Last intersected node
-    depth: u32,          // Depth of the octree
+struct StackNode {
+    node_idx: u32,
+    box: BoundingBox,
 }
 
 // ===========================
@@ -93,20 +91,23 @@ fn child_box(parent: BoundingBox, child_idx: u32) -> BoundingBox {
     return b;
 }
 
-fn first_child(ray: Ray, parent: BoundingBox) -> u32 {
-    var best_t = 9999999.0;
-    var best_idx = 0u;
+// Return an array of children indices, sorted by ray intersection
+fn sort_children(ray: Ray) -> array<u32, 8> {
+    var mask = 0u;
+    if (ray.dir.x < 0.0) { mask |= 4u; } // 0b100
+    if (ray.dir.y < 0.0) { mask |= 2u; } // 0b010
+    if (ray.dir.z < 0.0) { mask |= 1u; } // 0b001
 
-    for (var i = 0u; i < 8u; i++) {
-        let child = child_box(parent, i);
-        let t = intersect_aabb(ray, child);
-
-        if (t.x <= t.y && t.y > 0.0 && max(t.x, 0.0) < best_t) {
-            best_t = max(t.x, 0.0);
-            best_idx = i;
-        }
-    }
-    return best_idx;
+    return array<u32, 8>(
+        0u ^ mask,
+        1u ^ mask,
+        2u ^ mask,
+        3u ^ mask,
+        4u ^ mask,
+        5u ^ mask,
+        6u ^ mask,
+        7u ^ mask,
+    );
 }
 
 // ===========================
@@ -143,30 +144,63 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let world_size = f32(world_params.grid_size * CHUNK_SIZE);
     let max_depth = u32(log2(world_size));
 
-    // return vec4<f32>(f32(max_depth) / 10.0, 0.0, 0.0, 1.0);
+    var world_box: BoundingBox;
+    world_box.min = vec3<f32>(0.0);
+    world_box.max = vec3<f32>(world_size);
 
-    var current_box: BoundingBox;
-    current_box.min = vec3<f32>(0.0);
-    current_box.max = vec3<f32>(world_size);
-    var node_idx = 0u;
-
-    /***************** Octree navigation *****************/
-    for(var depth = 0u; depth <= max_depth; depth++) {
-        let node = svo[node_idx];
-
-        if (node.children_idx == 0u) {
-            return vec4<f32>(1.0); 
-            return vec4<f32>(get_env_color(ray), 1.0);
-        }
-        if (node.children_idx == 0xFFFFFFFFu) {
-            return vec4<f32>(unpack4x8unorm(node.color).rgb, 1.0);
-        }
-
-        let child_offset = first_child(ray, current_box);
-        current_box = child_box(current_box, child_offset);
-
-        node_idx = node.children_idx + child_offset;
+    // Check if intersect the world
+    let hit = intersect_aabb(ray, world_box);
+    if (hit.x > hit.y || hit.y < 0.0) { // No intersection
+        return vec4<f32>(get_env_color(ray), 1.0);
     }
 
-    return vec4<f32>(1.0); 
+    var stack: array<StackNode, 64>; // TODO: Calculate optimal size, depending on the view distance
+    var stack_ptr = 0u;
+
+    // Push world box into the stack
+    stack[stack_ptr].node_idx = 0u;
+    stack[stack_ptr].box = world_box;
+    stack_ptr++;
+
+    var iteration = 0u;
+
+    /***************** Octree navigation *****************/
+    while (stack_ptr > 0u && iteration < 256) {
+        iteration++;
+
+        // Pop the parent
+        stack_ptr--;
+        let stack_entry = stack[stack_ptr];
+        let current_node = svo[stack_entry.node_idx];
+
+        if (current_node.children_idx == 0xFFFFFFFFu) { // Leaf
+            return vec4<f32>(unpack4x8unorm(current_node.color).rgb, 1.0);
+        }
+
+        if (current_node.children_idx != 0u) { // Non-empty children
+            // return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+            let sorted_children = sort_children(ray);
+            // Push all intersected children in the stack
+            for (var i = 7; i >= 0; i--) {
+                let ci = sorted_children[u32(i)];
+                let curr_box = child_box(stack_entry.box, ci);
+
+                let child_node = svo[current_node.children_idx + ci];
+                if (child_node.children_idx == 0u) { // If child is empty
+                    continue; 
+                }
+
+                let hit = intersect_aabb(ray, curr_box);
+                if (hit.x <= hit.y + EPSILON && hit.y > 0.0) {
+                    stack[stack_ptr].node_idx = current_node.children_idx + ci;
+                    stack[stack_ptr].box = curr_box;
+                    stack_ptr++;
+                }
+            }
+        }          
+
+        if (stack_ptr >= 64) { return vec4<f32>(0.0, 1.0, 1.0, 1.0); } // Safe limit
+    }
+
+    return vec4<f32>(get_env_color(ray), 1.0); 
 }

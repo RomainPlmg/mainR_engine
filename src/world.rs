@@ -1,8 +1,4 @@
-use crate::{
-    chunk::{self, *},
-    svo::{SVO, SVONode},
-    voxel::Voxel,
-};
+use crate::{chunk::*, svo::SVO};
 use dashmap::DashMap;
 use noise::Perlin;
 use wgpu::util::DeviceExt;
@@ -147,11 +143,7 @@ impl WorldResource {
     }
 
     pub fn upload(&mut self, queue: &wgpu::Queue, world: &World) {
-        queue.write_buffer(
-            &self.svo_buffer,
-            0,
-            world.octree.as_bytes(),
-        );
+        queue.write_buffer(&self.svo_buffer, 0, world.octree.as_bytes());
     }
 }
 

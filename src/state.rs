@@ -123,7 +123,9 @@ impl State {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.display.resize(&self.gpu.device, width, height);
+        if width > 0 && height > 0 {
+            self.display.resize(&self.gpu.device, width, height);
+        }
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

@@ -53,10 +53,12 @@ impl GpuContext {
             format: surface_format,           // Preferred sRGB
             height: size.height,
             width: size.width,
-            present_mode: wgpu::PresentMode::Immediate,
+            present_mode: wgpu::PresentMode::Fifo,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, // Define the surface as a canvas
             view_formats: vec![],
         };
+
+        surface.configure(&device, &config);
 
         Ok((
             Self {

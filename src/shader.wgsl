@@ -23,7 +23,7 @@ struct Ray {
 
 struct BoundingBox {
     min: vec3<f32>,   // Down left corner of the box
-    max: vec3<f32>,   // Top right corner of the box
+    size: f32,
 }
 
 struct SVONode {
@@ -66,7 +66,7 @@ fn get_env_color(ray: Ray) -> vec3<f32> {
 
 fn intersect_aabb(ray: Ray, box: BoundingBox) -> vec2<f32> {
     let t0 = (box.min - ray.origin) / ray.dir;
-    let t1 = (box.max - ray.origin) / ray.dir;
+    let t1 = (box.min + box.size - ray.origin) / ray.dir;
 
     // If negative direction, t0 > t1
     let t_min = min(t0, t1);
@@ -80,14 +80,14 @@ fn intersect_aabb(ray: Ray, box: BoundingBox) -> vec2<f32> {
 }
 
 fn child_box(parent: BoundingBox, child_idx: u32) -> BoundingBox {
-    let half = (parent.max - parent.min) / 2.0;
+    let half = parent.size / 2.0;
     let center = parent.min + half;
 
     var b: BoundingBox;
     b.min.x = select(parent.min.x, center.x, bool(child_idx & 4u));
     b.min.y = select(parent.min.y, center.y, bool(child_idx & 2u));
     b.min.z = select(parent.min.z, center.z, bool(child_idx & 1u));
-    b.max = b.min + half;
+    b.size = half;
     return b;
 }
 
@@ -142,19 +142,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     ray.dir = normalize(target_pos - ray.origin);
 
     let world_size = f32(world_params.grid_size * CHUNK_SIZE);
-    let max_depth = u32(log2(world_size));
 
     var world_box: BoundingBox;
     world_box.min = vec3<f32>(0.0);
-    world_box.max = vec3<f32>(world_size);
+    world_box.size = world_size;
 
     // Check if intersect the world
     let hit = intersect_aabb(ray, world_box);
     if (hit.x > hit.y || hit.y < 0.0) { // No intersection
         return vec4<f32>(get_env_color(ray), 1.0);
     }
+    // ray.origin = ray.origin + ray.dir * (hit.x + EPSILON);
 
-    var stack: array<StackNode, 64>; // TODO: Calculate optimal size, depending on the view distance
+    var stack: array<StackNode, 16>; // TODO: Calculate optimal size, depending on the view distance
     var stack_ptr = 0u;
 
     // Push world box into the stack
@@ -174,6 +174,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let current_node = svo[stack_entry.node_idx];
 
         if (current_node.children_idx == 0xFFFFFFFFu) { // Leaf
+            return vec4<f32>(vec3<f32>(1.0 / f32(iteration + 1)), 1.0);
             return vec4<f32>(unpack4x8unorm(current_node.color).rgb, 1.0);
         }
 
@@ -187,7 +188,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
                 let child_node = svo[current_node.children_idx + ci];
                 if (child_node.children_idx == 0u) { // If child is empty
-                    continue; 
+                    continue;
                 }
 
                 let hit = intersect_aabb(ray, curr_box);
@@ -197,9 +198,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     stack_ptr++;
                 }
             }
-        }          
+        }
 
-        if (stack_ptr >= 64) { return vec4<f32>(0.0, 1.0, 1.0, 1.0); } // Safe limit
+        if (stack_ptr >= 16) { return vec4<f32>(0.0, 1.0, 1.0, 1.0); } // Safe limit
     }
 
     return vec4<f32>(get_env_color(ray), 1.0); 

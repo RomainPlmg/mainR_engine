@@ -47,10 +47,13 @@ impl Chunk {
     }
 
     pub fn index_to_local_pos(index: usize) -> glam::IVec3 {
-        let x = (index as u32 % CHUNK_SIZE) as i32;
-        let y = ((index as u32 / CHUNK_SIZE) % CHUNK_SIZE) as i32;
-        let z = (index as u32 / CHUNK_SIZE) as i32;
-        glam::IVec3::new(x, y, z)
+        let i = index as u32;
+
+        let x = i % CHUNK_SIZE;
+        let y = (i / CHUNK_SIZE) % CHUNK_SIZE;
+        let z = i / (CHUNK_SIZE * CHUNK_SIZE);
+
+        glam::IVec3::new(x as i32, y as i32, z as i32)
     }
 
     pub fn local_to_world_pos(local_pos: &glam::IVec3, chunk_pos: &glam::IVec3) -> glam::IVec3 {

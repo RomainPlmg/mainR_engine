@@ -56,11 +56,9 @@ impl World {
                 let local_voxel_coord = Chunk::index_to_local_pos(index);
                 let global_voxel_coord = Chunk::local_to_world_pos(&local_voxel_coord, chunk_coord);
 
-                octree.insert(global_voxel_coord.as_uvec3(), voxel.color, max_depth);
+                octree.insert(global_voxel_coord, voxel.color, max_depth);
             }
         }
-
-        println!("{} kB", octree.size() / 1000);
 
         Self {
             chunks,

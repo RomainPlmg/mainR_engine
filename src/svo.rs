@@ -30,9 +30,9 @@ impl SVO {
         new_idx
     }
 
-    pub fn insert(&mut self, coord: glam::UVec3, color: u32, max_depth: u32) {
+    pub fn insert(&mut self, coord: glam::IVec3, color: u32, max_depth: u32) {
         let mut current_node_idx = 0; // Start in the root
-        let mut size = 2_u32.pow(max_depth); // World size in block
+        let mut size = 2_i32.pow(max_depth); // World size in block
 
         // Work coordinates (begin to world coordinates)
         let mut cur_coord = coord;
